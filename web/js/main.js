@@ -523,6 +523,10 @@ els.applyAll.addEventListener('click', () => {
  * (before inversion), where film grain is most uniform – see core/src/denoise/mod.rs.
  */
 function denoiseFor(doc) {
+  // With noise reduction off the film type doesn't affect the source pixels, so leave it out:
+  // this object is also the key for the GPU copy of the proxy, and a key that changes without
+  // a re-upload would stall the preview (see pumpRender).
+  if (doc.denoise.method === 'off') return { ...doc.denoise };
   return { ...doc.denoise, negative: doc.params.negative };
 }
 
