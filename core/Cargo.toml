@@ -2,9 +2,8 @@
 name = "darkroom-core"
 version = "0.1.0"
 edition = "2021"
-# Our code is MIT. Note: the raw decoder dependency (rawler) is LGPL-2.1, and the compiled
-# WebAssembly includes it – see "Licence" in README.md.
-license = "MIT"
+# LGPL, to match the raw decoder (rawler, LGPL-2.1) that is compiled into the WebAssembly.
+license = "LGPL-2.1-or-later"
 description = "Image processing core for Darkroom, compiled to WebAssembly"
 
 [lib]

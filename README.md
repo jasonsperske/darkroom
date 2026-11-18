@@ -135,8 +135,6 @@ The main preview shows a screen-sized proxy, and downscaling already averages mo
 
 ## Licence
 
-Darkroom's own code is released under the [MIT licence](LICENSE).
-
-The camera raw decoder it uses, [rawler](https://github.com/dnglab/dnglab), is licensed under LGPL-2.1. It is compiled into the WebAssembly published on the site (`web/pkg/`), so that compiled bundle also carries rawler's LGPL-2.1 obligations. The complete source and build script are here, so anyone can rebuild it with a modified rawler. Other Rust dependencies are under MIT/Apache-2.0 or similar permissive licences.
+Darkroom is free software under the [GNU Lesser General Public License, version 2.1](LICENSE) or (at your option) any later version. This matches its camera raw decoder, [rawler](https://github.com/dnglab/dnglab), which is LGPL-2.1 and is compiled into the WebAssembly published on the site. The other Rust dependencies are under MIT, Apache-2.0 or similar permissive licences, all compatible with the LGPL. The complete source and build script are here, so anyone can rebuild the site with modified libraries.
 
 The neural network weights in `web/models/` were trained on the Kodak Lossless True Color Image Suite, which Kodak released for unrestricted use.
