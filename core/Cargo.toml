@@ -1,0 +1,44 @@
+[package]
+name = "darkroom-core"
+version = "0.1.0"
+edition = "2021"
+# Our code is MIT. Note: the raw decoder dependency (rawler) is LGPL-2.1, and the compiled
+# WebAssembly includes it – see "Licence" in README.md.
+license = "MIT"
+description = "Image processing core for Darkroom, compiled to WebAssembly"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Must match the wasm-bindgen CLI version exactly (see build.sh / CI workflow).
+wasm-bindgen = "=0.2.100"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Turns Rust panics into readable console errors instead of a bare "unreachable".
+console_error_panic_hook = "0.1"
+# Camera raw decoding (CR2/CR3/NEF/ARW/RAF/ORF/RW2/DNG/...). Gives us the undemosaiced sensor data.
+rawler = "0.8"
+# Decoders for ordinary raster formats, with 16-bit support for PNG and TIFF scans.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "tiff", "webp", "bmp", "gif"] }
+# Encoders.
+jpeg-encoder = "0.7"
+png = "0.18"
+tiff = "0.11"
+
+# rawler pulls in `uuid`/`getrandom`, which refuse to build for wasm32-unknown-unknown unless told to
+# use the browser's crypto API for randomness. We never use randomness ourselves.
+uuid = { version = "1", features = ["js"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom02 = { package = "getrandom", version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+jpeg-encoder = "0.7"
+# Only for the training example (parallel batches).
+rayon = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

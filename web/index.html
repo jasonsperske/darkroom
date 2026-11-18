@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Darkroom</title>
+  <meta name="description" content="Develop photos and film scans in the browser. Everything runs locally.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23222'/%3E%3Crect x='4' y='4' width='8' height='8' fill='none' stroke='%23ddd' stroke-width='1.5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- Image area. Everything else stays out of the way. -->
+  <section id="stage" aria-label="Image">
+    <div id="viewport">
+      <canvas id="canvas-gpu" hidden></canvas>
+      <canvas id="canvas-cpu" hidden></canvas>
+      <div id="crop" hidden>
+        <div class="crop-box">
+          <div class="thirds"></div>
+          <i data-h="nw"></i><i data-h="n"></i><i data-h="ne"></i><i data-h="e"></i>
+          <i data-h="se"></i><i data-h="s"></i><i data-h="sw"></i><i data-h="w"></i>
+        </div>
+      </div>
+    </div>
+    <canvas id="loupe" hidden></canvas>
+
+    <div id="empty">
+      <p>Drop images here</p>
+      <button type="button" id="open">Open files…</button>
+      <p class="formats">JPEG · PNG · TIFF (16-bit) · WebP · camera raw (CR2, CR3, NEF, ARW, RAF, ORF, RW2, DNG, …)<br>
+        Files never leave your computer.</p>
+    </div>
+    <div id="progress" role="progressbar" aria-label="Working" aria-valuemin="0" aria-valuemax="100"><div></div></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <nav id="filmstrip" aria-label="Images" hidden></nav>
+  </section>
+
+  <!-- Controls. -->
+  <aside id="panel" aria-label="Adjustments">
+    <header>
+      <div id="file-name">No image</div>
+      <div id="file-meta"></div>
+      <canvas id="histogram" width="256" height="72" aria-label="Histogram"></canvas>
+    </header>
+
+    <div id="controls">
+      <details open>
+        <summary>Film</summary>
+        <div class="seg" role="radiogroup" aria-label="Film type">
+          <button type="button" data-film="positive" aria-pressed="true">Positive</button>
+          <button type="button" data-film="negative">Negative</button>
+        </div>
+        <div class="negative-only">
+          <div class="row">
+            <button type="button" id="auto-negative" title="Detect film base and density range from the image">Auto</button>
+            <button type="button" id="pick-base" data-tool="base" title="Click the clear film rebate (unexposed edge)">Pick film base</button>
+          </div>
+          <label class="slider"><span>Range</span><input type="range" data-param="rangeStops" min="2" max="12" step="0.1"><output></output></label>
+          <div id="density" class="readout"></div>
+        </div>
+        <label class="check"><input type="checkbox" data-param="monochrome"> Black &amp; white</label>
+        <label class="check" title="Scanner software often saves linear ('raw') TIFFs. Tick if the scan looks very dark and flat."><input type="checkbox" data-param="inputLinear"> Linear source</label>
+      </details>
+
+      <details open>
+        <summary>Noise</summary>
+        <div class="seg seg4" role="radiogroup" aria-label="Noise reduction method">
+          <button type="button" data-denoise-method="off">Off</button>
+          <button type="button" data-denoise-method="wavelet" title="À trous wavelet shrinkage – fast, very good on colour noise">Wavelet</button>
+          <button type="button" data-denoise-method="nlm" title="Non-local means – averages similar patches; best for digital noise, weaker on film grain">NLM</button>
+          <button type="button" data-denoise-method="neural" title="Small convolutional network trained on synthetic film grain – best for film (WebGPU when available)">Neural</button>
+        </div>
+        <div class="denoise-on">
+          <label class="slider"><span>Luminance</span><input type="range" data-denoise="luma" min="0" max="3" step="0.05"><output></output></label>
+          <label class="slider"><span>Colour</span><input type="range" data-denoise="chroma" min="0" max="3" step="0.05"><output></output></label>
+          <label class="slider" title="Size of the grain clumps in pixels. Measured automatically; double-click to return to the measured value."><span>Grain size</span><input type="range" data-denoise="grainSize" min="0" max="4" step="0.05"><output></output></label>
+        </div>
+        <div id="noise-readout" class="readout"></div>
+      </details>
+
+      <details open>
+        <summary>Light</summary>
+        <label class="slider"><span>Exposure</span><input type="range" data-param="exposure" min="-4" max="4" step="0.01"><output></output></label>
+        <label class="slider"><span>Contrast</span><input type="range" data-param="contrast" min="0.4" max="2.5" step="0.01"><output></output></label>
+        <label class="slider"><span>Black</span><input type="range" data-param="black" min="-0.2" max="0.5" step="0.005"><output></output></label>
+        <label class="slider"><span>White</span><input type="range" data-param="white" min="0.5" max="1.3" step="0.005"><output></output></label>
+        <div class="row"><button type="button" id="auto-levels" title="Set black and white points from the image">Auto levels</button></div>
+      </details>
+
+      <details open>
+        <summary>Colour</summary>
+        <label class="slider"><span>Temperature</span><input type="range" data-param="temperature" min="-1" max="1" step="0.005"><output></output></label>
+        <label class="slider"><span>Tint</span><input type="range" data-param="tint" min="-1" max="1" step="0.005"><output></output></label>
+        <label class="slider"><span>Saturation</span><input type="range" data-param="saturation" min="0" max="2" step="0.01"><output></output></label>
+        <div class="row">
+          <button type="button" data-tool="neutral" title="Click something that should be neutral grey">Pick grey</button>
+          <button type="button" id="reset-wb">Reset</button>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Crop &amp; rotate</summary>
+        <div class="row">
+          <button type="button" data-tool="crop" title="Crop (C)">Crop</button>
+          <select id="aspect" aria-label="Aspect ratio"></select>
+          <button type="button" id="aspect-swap" title="Portrait / landscape (X)" aria-label="Swap orientation">⇄</button>
+        </div>
+        <div class="row">
+          <button type="button" data-op="ccw" title="Rotate left (Shift+R)" aria-label="Rotate left">⟲</button>
+          <button type="button" data-op="cw" title="Rotate right (R)" aria-label="Rotate right">⟳</button>
+          <button type="button" data-op="flipH" title="Flip horizontal (F)" aria-label="Flip horizontal">⇋</button>
+          <button type="button" data-op="flipV" title="Flip vertical" aria-label="Flip vertical">⥮</button>
+        </div>
+        <label class="check jpeg-only" title="Keep crop edges on the JPEG's 8/16-pixel block grid so it can be exported without recompression"><input type="checkbox" id="snap"> Snap to JPEG blocks <span id="mcu"></span></label>
+        <div id="crop-size" class="readout"></div>
+      </details>
+
+      <details open>
+        <summary>Export</summary>
+        <select id="format" aria-label="Format">
+          <option value="jpeg">JPEG</option>
+          <option value="jpeg-lossless">JPEG · lossless crop &amp; rotate</option>
+          <option value="png8">PNG · 8-bit</option>
+          <option value="png16">PNG · 16-bit</option>
+          <option value="tiff16">TIFF · 16-bit</option>
+        </select>
+        <div id="lossless-note" class="note" hidden>Re-packs the original JPEG data. Only crop and rotation apply; edges snap to the block grid.</div>
+        <label class="slider jpeg-opt"><span>Quality</span><input type="range" id="quality" min="50" max="100" step="1" value="95"><output></output></label>
+        <label class="check jpeg-opt"><input type="checkbox" id="chroma444" checked> Full colour resolution (4:4:4)</label>
+        <label class="field resize-opt"><span>Long edge</span><input type="number" id="max-edge" min="64" max="65535" step="1" placeholder="full size"> px</label>
+        <div class="row">
+          <button type="button" id="export" class="primary">Export</button>
+          <button type="button" id="export-all" hidden>Export all</button>
+        </div>
+      </details>
+
+      <div class="row tail">
+        <button type="button" id="reset">Reset image</button>
+        <button type="button" id="apply-all" hidden title="Copy these develop settings (not crop) to every open image">Apply to all</button>
+      </div>
+    </div>
+
+    <footer>
+      <span id="engine-status">Starting…</span>
+      <button type="button" id="help-btn" aria-label="Keyboard shortcuts">?</button>
+    </footer>
+  </aside>
+</div>
+
+<dialog id="help">
+  <h2>Keyboard</h2>
+  <dl>
+    <dt>O</dt><dd>Open files</dd>
+    <dt>C</dt><dd>Crop tool · Enter / Esc to finish</dd>
+    <dt>X</dt><dd>Swap crop orientation</dd>
+    <dt>R / Shift+R</dt><dd>Rotate right / left</dd>
+    <dt>F</dt><dd>Flip horizontal</dd>
+    <dt>\ (hold)</dt><dd>Show unedited tones</dd>
+    <dt>Z or double-click</dt><dd>100 % loupe · drag to pan</dd>
+    <dt>B</dt><dd>Cycle background</dd>
+    <dt>← / →</dt><dd>Previous / next image</dd>
+    <dt>E</dt><dd>Export</dd>
+    <dt>Tab</dt><dd>Hide / show panel</dd>
+    <dt>Double-click a slider</dt><dd>Reset it</dd>
+  </dl>
+  <p>All processing happens on this device: Rust compiled to WebAssembly in Web Workers, with a WebGPU preview. The source is organised for reading — start with <code>README.md</code>.</p>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
+
+<input type="file" id="file-input" multiple hidden
+  accept="image/*,.tif,.tiff,.dng,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.rwl,.pef,.srw,.erf,.kdc,.dcr,.mrw,.mos,.mef,.iiq,.3fr,.fff,.x3f,.raw">
+</body>
+</html>
