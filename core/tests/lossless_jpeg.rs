@@ -1,5 +1,9 @@
-//! End-to-end check of the lossless JPEG transcoder: transforming coefficients must give exactly
-//! the same pixels as decoding the original and cropping/rotating the pixels.
+//! End-to-end checks of the lossless JPEG transcoder.
+//!
+//! The losslessness proof is `coefficients_are_exact`: the quantised DCT coefficients in the
+//! output file equal the transformed input coefficients, bit for bit. The pixel comparisons are
+//! a sanity check against decoding and cropping/rotating the pixels; they are exact for 4:4:4
+//! without a transpose, and otherwise differ by IDCT/upsampling rounding (mean error below 1).
 
 use darkroom_core::geometry::{orient_buffer, Orientation, PixelRect};
 use darkroom_core::jpeg;
@@ -121,11 +125,8 @@ fn snapping_follows_the_mcu_grid() {
 #[test]
 fn coefficients_are_exact() {
     let (w, h) = (203, 141);
-    for (sampling, progressive) in [
-        (jpeg_encoder::SamplingFactor::R_4_4_4, false),
-        (jpeg_encoder::SamplingFactor::R_4_2_0, true),
-        (jpeg_encoder::SamplingFactor::R_4_2_2, false),
-    ] {
+    use jpeg_encoder::SamplingFactor::{R_4_2_0, R_4_2_2, R_4_4_4};
+    for (sampling, progressive) in [(R_4_4_4, false), (R_4_2_2, false), (R_4_2_0, false), (R_4_4_4, true), (R_4_2_2, true), (R_4_2_0, true)] {
         let original = encode(&test_image(w, h), w, h, sampling, progressive, Some(7));
         let src = jpeg::decode_coefficients(&original).unwrap();
         for code in 1..=8 {

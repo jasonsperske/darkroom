@@ -29,7 +29,7 @@ pub fn render_view(
         let i = (y * sw + x) * ch;
         [lut[src[i] as usize], lut[LUT_SIZE + src[i + 1] as usize], lut[2 * LUT_SIZE + src[i + 2] as usize]]
     };
-    // 256-entry encode table for 8-bit output (indexed by quantised linear value, 12 bits).
+    // 4096-entry encode table for 8-bit output, indexed by the linear value quantised to 12 bits.
     let encode: Vec<u8> = (0..4096).map(|i| (linear_to_srgb(i as f32 / 4095.0) * 255.0 + 0.5) as u8).collect();
 
     for oy in 0..out_h {

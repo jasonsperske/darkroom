@@ -6,7 +6,7 @@
 //! * interleaved `R,G,B` `u16` samples, row-major, no padding;
 //! * a [`Transfer`] saying whether the code values are sRGB-encoded or linear light.
 //!   We deliberately do **not** linearise 8/16-bit sRGB files at decode time: the develop
-//!   lookup table (see `develop::lut`) folds linearisation into the same table lookup as every
+//!   lookup table (see `develop/tone.rs` → `build_lut`) folds linearisation into the same table lookup as every
 //!   other tone operation, so it costs nothing, and the user can override the guess (scanner
 //!   software often writes *linear* TIFFs without saying so);
 //! * the EXIF-style orientation found in the file (applied later, never baked in).

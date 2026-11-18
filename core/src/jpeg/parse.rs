@@ -191,7 +191,6 @@ pub fn decode(bytes: &[u8]) -> Result<JpegFile, String> {
     let mut segments = Vec::new();
     let mut coefs: Vec<Vec<i16>> = Vec::new();
     let mut restart_interval = 0usize;
-    // Progressive state that persists across scans: end-of-band run is per scan, but keep it here.
 
     loop {
         let (m, a, b, next) = next_segment(bytes, pos)?;

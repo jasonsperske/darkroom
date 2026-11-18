@@ -13,6 +13,7 @@
 //! | `encode`    | JPEG / PNG / TIFF writers                                         |
 //! | `jpeg`      | lossless crop & rotate by editing DCT coefficients directly       |
 //! | `color`     | sRGB transfer function and colour matrices                        |
+//! | `denoise`   | film grain model, wavelet, non-local means, CNN denoiser          |
 //!
 //! Pixel buffers crossing the boundary are interleaved `u16` (RGB, or RGBA for the proxy),
 //! row-major, with no padding.

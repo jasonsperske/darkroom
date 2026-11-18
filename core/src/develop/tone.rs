@@ -108,7 +108,7 @@ const KNOT_STEP: usize = 4;
 /// Evaluating the full chain (several `log`/`pow` calls) 196 608 times takes ~60 ms in wasm –
 /// too slow to rebuild on every slider movement. The curve is smooth, so we evaluate it exactly
 /// every 4 code values (16 385 knots per channel) and linearly interpolate in between. The
-/// error this introduces is a small fraction of an 8-bit step and about one 16-bit step at worst
+/// error this introduces is a small fraction of an 8-bit step and at most about two 16-bit steps
 /// (see the test below).
 pub fn build_lut(p: &Params) -> Vec<f32> {
     let gains = channel_gains(p);

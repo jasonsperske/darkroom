@@ -9,7 +9,7 @@ The code is also meant to be read. Every module starts with a comment explaining
 - **Formats in:** JPEG, PNG and TIFF (8- and 16-bit), WebP, BMP and GIF. Camera raw: CR2, CR3, NEF, ARW, RAF, ORF, RW2, DNG and many more (via [rawler](https://github.com/dnglab/dnglab)). Formats we can't decode, such as AVIF or HEIC, fall back to the browser's own decoder.
 - **Negatives:** the inversion works on optical density. It removes the orange mask and balances each dye layer automatically, or you can click the film rebate to set the base yourself. B&W negatives are supported too.
 - **Grain and noise reduction, built for film:**
-  - A two-parameter grain model, *amount* and *grain size*, is measured automatically from flat areas of the image. It covers both digital noise and the clumped grain of fast or underexposed film. Each wavelet scale also gets its own direct measurement, because real scans mix scanner noise with film grain.
+  - A two-parameter grain model, *amount* and *grain size*, is measured automatically from flat areas of the image. It covers both digital noise and the clumped grain of fast or underexposed film. The three finest wavelet scales are also measured directly, because real scans mix scanner noise with film grain.
   - Negatives are denoised in **optical density, before inversion**, where grain is most uniform. Inversion is what blows up grain in the shadows of underexposed frames.
   - There are three methods: à trous wavelet shrinkage, non-local means, and a small **neural network** (FFDNet-style CNN). The network is trained on synthetic film grain and runs as WebGPU compute shaders, with a WebAssembly SIMD fallback.
   - Luminance, colour and grain-size controls let you remove grain completely or just tame it.
@@ -39,25 +39,67 @@ You can run the Rust tests natively with `cargo test --release --manifest-path c
 
 ## Architecture
 
-```
- UI thread (web/js/main.js)                      Engine worker (web/workers/engine.worker.js)
- ┌──────────────────────────────┐   messages    ┌─────────────────────────────────────────┐
- │ DOM, crop tool, histogram    │ ────────────► │ owns all pixels; own wasm instance for   │
- │ WebGPU preview               │ ◄──────────── │ tone LUTs, preview, analysis            │
- │  (proxy texture + LUT)       │  LUT / bitmap │                                         │
- └──────────────────────────────┘               │ WorkerPool (web/workers/pool.js)        │
-                                                │  ├─ compute worker ─ wasm  decode       │
-                                                │  ├─ compute worker ─ wasm  develop strip│
-                                                │  └─ …N               wasm  encode       │
-                                                └─────────────────────────────────────────┘
+```mermaid
+flowchart LR
+  subgraph UI["UI thread (web/js)"]
+    Main["main.js<br/>panel, crop, histogram"]
+    GPU["WebGPU preview<br/>proxy texture + LUT"]
+  end
+  subgraph Engine["engine.worker.js"]
+    Docs["documents<br/>masters + proxies (LRU)"]
+    EW["wasm: LUTs, analysis,<br/>CPU preview"]
+    NN["WebGPU denoiser<br/>compute shaders"]
+  end
+  subgraph Pool["WorkerPool (pool.js)"]
+    C1["compute worker 1<br/>wasm"]
+    C2["compute worker 2<br/>wasm"]
+    CN["compute worker N<br/>wasm"]
+  end
+  Main -- "RPC messages" --> Docs
+  Docs -- "LUT, proxy, bitmaps" --> Main
+  Main --> GPU
+  Docs -- "decode, denoise tiles,<br/>develop strips, encode" --> C1 & C2 & CN
+  C1 & C2 & CN -- "transferred buffers" --> Docs
+  Docs -. "neural tiles" .-> NN
 ```
 
-- **One implementation of the maths.** Every per-channel tone operation is tabulated by Rust into a lookup table (3 × 65 536 floats). The WebGPU shader, the CPU preview and the full-resolution export all use that same table, so the preview always matches the export.
-- **Parallelism without SharedArrayBuffer.** WebAssembly threads need cross-origin isolation headers, and GitHub Pages can't send them. Instead the pool runs N independent wasm instances, and the export is split into horizontal strips that are transferred to the workers and back without copying.
+What happens to an image, from file to export:
+
+```mermaid
+flowchart LR
+  File["File<br/>JPEG, PNG, TIFF, raw"] --> Decode["Decode<br/>demosaic, camera matrix"]
+  Decode --> Master["16-bit RGB master"]
+  Master --> Proxy["Screen-sized proxy"]
+  Master --> Denoise["Denoise (optional)<br/>gamma or density space"]
+  Proxy --> Denoise
+  Denoise --> LUT["Tone LUT 3 × 65536<br/>invert, WB, levels, contrast"]
+  LUT --> Mix["Saturation / mono"]
+  Mix --> Out["sRGB"]
+  Out --> Preview["Preview"]
+  Out --> Export["JPEG / PNG / TIFF"]
+  File -- "JPEG only" --> Lossless["Lossless crop / rotate<br/>DCT coefficients"]
+```
+
+- **One implementation of the maths.** Every per-channel tone operation is tabulated by Rust into a lookup table (3 × 65 536 floats). The WebGPU shader, the CPU preview and the full-resolution export all use that same table, so the preview matches the export to within the rounding of the final sRGB encoding.
+- **Parallelism without SharedArrayBuffer.** WebAssembly threads need cross-origin isolation headers, and GitHub Pages can't send them. Instead the pool runs N independent wasm instances, and the export is split into horizontal strips that are transferred (moved, not copied) to the workers and back.
 - **SIMD where it helps.** The build produces a `simd128` variant and a fallback, and `web/js/wasm.js` picks one by feature detection. The SIMD export loop is hand-written in `core/src/develop/apply.rs`. That file also explains why table lookups stay scalar: wasm SIMD has no gather instruction.
 - **Proxy and master.** Each image is decoded to a 16-bit RGB *master*. A screen-sized *proxy* drives the preview and analysis. Only export and the loupe touch the master. Masters that haven't been used recently are freed and decoded again on demand.
 
 ## Reading guide
+
+Each component has its own README with the approach, diagrams and sources:
+
+| Component | Guide |
+|---|---|
+| Rust core: JS boundary, colour, geometry, resizing, export | [core/README.md](core/README.md) |
+| Decoding: format sniffing, raw files, demosaicing | [core/src/decode/README.md](core/src/decode/README.md) |
+| Develop: negative inversion, tone LUT, analysis, SIMD | [core/src/develop/README.md](core/src/develop/README.md) |
+| Lossless JPEG: format, Huffman, progressive, DCT transforms | [core/src/jpeg/README.md](core/src/jpeg/README.md) |
+| Noise reduction: grain model, wavelet, NLM, neural network | [core/src/denoise/README.md](core/src/denoise/README.md) |
+| Front end: UI, WebGPU rendering and inference | [web/README.md](web/README.md) |
+| Workers: engine, compute pool, message flows | [web/workers/README.md](web/workers/README.md) |
+
+Or jump straight to the code:
 
 | If you want to learn about…              | start here                                               |
 |------------------------------------------|----------------------------------------------------------|
@@ -95,14 +137,14 @@ The training data is the [Kodak Lossless True Color Image Suite](https://r0k.us/
 - grain size from 0 (digital) to 3 px;
 - correlation between colour channels from independent dye layers up to monochrome silver grain;
 - amplitude that varies with tone, plus scanner noise;
-- half the patches are inverted and tone-curved to look like negatives in density space.
+- every patch gets a random tone curve, and half are also inverted to look like negatives in density space.
 
 To retrain the network:
 
 ```sh
 # put kodim01.png … kodim24.png in ./kodak, then:
 RUSTFLAGS="-C target-cpu=native" cargo run --release --manifest-path core/Cargo.toml \
-  --example train_denoiser -- kodak web/models/denoise.bin 8000     # ~45 min on 4 cores
+  --example train_denoiser -- kodak web/models/denoise.bin 9000     # ~55 min on 4 cores (shipped weights)
 cargo run --release --manifest-path core/Cargo.toml --example denoise_eval -- kodak web/models/denoise.bin
 ```
 
@@ -131,7 +173,8 @@ The main preview shows a screen-sized proxy, and downscaling already averages mo
 - Grain is modelled as Gaussian-shaped noise with one amount and one size per image, measured in the working space. Real grain also varies with density, and the model only partly captures that. Grain is a statistical texture, so no method separates it perfectly from fine image detail; the strength sliders exist so you can keep some.
 - Non-local means is the weakest method on coarse grain, because the clumps are nearly as big as its patches. Use wavelet or neural for film.
 - The neural network is small so that it fits the browser and the CPU training budget. Larger published models (DnCNN, FFDNet, NAFNet) denoise better, but are 10–100× heavier.
-- Lossless JPEG doesn't handle arithmetic-coded or 12-bit JPEGs, which are rare.
+- Lossless JPEG doesn't handle arithmetic-coded, 12-bit, lossless-mode or hierarchical JPEGs, which are rare. Its output is always baseline, restart markers are dropped, and only the EXIF orientation tag is updated (the embedded EXIF thumbnail still shows the original framing).
+- Cameras whose sensor has more than three colour filters (e.g. CYGM) aren't supported.
 
 ## Licence
 

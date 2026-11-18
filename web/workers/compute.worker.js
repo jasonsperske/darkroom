@@ -75,7 +75,7 @@ async function browserDecode(bytes) {
 }
 
 const jobs = {
-  /** File bytes → 16-bit RGB master + RGBA16 proxy for the screen + tiny thumbnail. */
+  /** File bytes → 16-bit RGB master + RGBA16 proxy for the screen + measured noise. */
   async decode({ bytes, name, proxyEdge }) {
     const data = new Uint8Array(bytes);
     let img;
